@@ -54,7 +54,6 @@ async def close_cookies(page):
         for selector in [
             '#onetrust-accept-btn-handler',
             '#onetrust-reject-all-handler',
-            '.onetrust-close-btn-handler',
         ]:
             btn = page.locator(selector)
             if await btn.count() > 0:
@@ -79,12 +78,12 @@ async def close_cookies(page):
                 await page.wait_for_timeout(1000)
                 return
 
-        # 3. Generic cookie banner uzdarymo mygtukai
+        # 3. Generic cookie banner uzdarymo mygtukai (tik matomi)
         for selector in [
-            'button[class*="cookie" i][class*="accept" i]',
-            'button[class*="cookie" i][class*="close" i]',
-            '[class*="consent"] button',
-            '[id*="consent"] button',
+            'button[class*="cookie" i][class*="accept" i]:visible',
+            'button[class*="cookie" i][class*="close" i]:visible',
+            '[class*="consent"] button:visible',
+            '[id*="consent"] button:visible',
         ]:
             btn = page.locator(selector)
             if await btn.count() > 0:
@@ -106,10 +105,19 @@ async def scrape_neste():
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
+
+        # Jei turime issaugotus cookies — uzkrauname juos (aplenkiame login + 2FA)
+        _ctx_kwargs = dict(
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
         )
+        if os.path.exists(config.NESTE_COOKIES):
+            _ctx_kwargs["storage_state"] = config.NESTE_COOKIES
+            print(f"[Neste] Krauname cookies is: {config.NESTE_COOKIES}")
+        else:
+            print("[Neste] Cookies failas nerastas — prisijungsime is naujo")
+
+        context = await browser.new_context(**_ctx_kwargs)
         page = await context.new_page()
 
         try:
@@ -185,6 +193,31 @@ async def scrape_neste():
                 await debug_screenshot(page, "05_neste_after_login")
                 print(f"[Neste] URL po prisijungimo: {page.url}")
 
+                # ── 2FA aptikimas ──────────────────────────────────────────
+                await page.wait_for_timeout(1500)
+                _twofa_found = False
+                for _twofa_sel in [
+                    'input[name="code"]',
+                    'input[placeholder*="kod" i]',
+                    '[class*="twofactor" i]',
+                    '[class*="two-factor" i]',
+                    'text=dviejų faktorių',
+                    'text=Verification',
+                    'text=verification code',
+                    'text=Two-factor',
+                ]:
+                    if await page.locator(_twofa_sel).count() > 0:
+                        _twofa_found = True
+                        break
+
+                if _twofa_found:
+                    print("[Neste] 2FA patvirtinimo kodas praSomas.")
+                    print("[Neste] Cookies pasenE (~60-90 dienu ciklas).")
+                    print("[Neste] Paleiskite lokaliai: python export_neste_cookies.py")
+                    await debug_screenshot(page, "2fa_screen")
+                    return results  # Grazinami tustys rezultatai, nesaugome cookies
+                # ──────────────────────────────────────────────────────────
+
             # -- 2. Navigacija --
             await page.wait_for_timeout(3000)
             await debug_screenshot(page, "06_neste_looking_for_menu")
@@ -259,6 +292,15 @@ async def scrape_neste():
                                     break
                             except ValueError:
                                 continue
+
+            # ── Cookies issaugojimas ───────────────────────────────────
+            try:
+                os.makedirs(os.path.dirname(config.NESTE_COOKIES), exist_ok=True)
+                await context.storage_state(path=config.NESTE_COOKIES)
+                print(f"[Neste] Cookies issaugoti: {config.NESTE_COOKIES}")
+            except Exception as _ce:
+                print(f"[Neste] Cookie save klaida (nekritine): {_ce}")
+            # ──────────────────────────────────────────────────────────
 
             date_parts = report_date.split(".")
             results["date"] = f"{date_parts[2]}-{date_parts[1]}-{date_parts[0]}"

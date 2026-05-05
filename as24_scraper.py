@@ -1,6 +1,7 @@
 """
 AS24 scraperis — naudoja JSON API tiesiogiai (be Playwright/Excel).
 Autentifikacija per sesijos cookies (AS24_STORAGE_STATE env kintamasis arba as24_storage.json).
+Kai cookies pasibaigia (HTTP 400/401) — paleidziamas as24_relogin.run_relogin().
 """
 import base64
 import json
@@ -8,6 +9,12 @@ import os
 import sys
 import requests
 from datetime import datetime
+
+
+class SessionExpiredError(Exception):
+    """AS24 sesija pasibaige — cookies nebegalioja."""
+    pass
+
 
 # Windows konsolei - UTF-8
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -72,9 +79,13 @@ def fetch_all_prices(session):
         "langueId": "LT",
     }
     resp = session.post(AS24_PRICES_API, json=body, timeout=30)
+    if resp.status_code in (400, 401, 403):
+        raise SessionExpiredError(
+            f"HTTP {resp.status_code} — AS24 sesija pasibaige arba cookies nebegalioja"
+        )
     resp.raise_for_status()
     rows = resp.json()
-    print(f"[AS24] Gauta {len(rows)} eilučių iš API")
+    print(f"[AS24] Gauta {len(rows)} eilucių is API")
     return rows
 
 
@@ -176,11 +187,10 @@ def scrape_adblue(rows, today):
     return results
 
 
-def scrape_as24():
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    session = requests.Session()
-    session.headers.update({
+def _make_session():
+    """Sukuria requests sesija su AS24 antrastelemis."""
+    s = requests.Session()
+    s.headers.update({
         "Accept": "application/json, text/plain, */*",
         "Content-Type": "application/json",
         "User-Agent": (
@@ -191,12 +201,44 @@ def scrape_as24():
         "Referer": "https://extranet.as24.com/extranet/lt/network/prices-by-station/multi-energy",
         "Origin": "https://extranet.as24.com",
     })
+    return s
 
-    cookies = load_cookies()
+
+def _apply_cookies(session, cookies):
+    """Prideda cookies i sesija."""
     for cname, cvalue in cookies.items():
         session.cookies.set(cname, cvalue, domain=".extranet.as24.com")
 
-    rows = fetch_all_prices(session)
+
+def scrape_as24():
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    session = _make_session()
+    cookies = load_cookies()
+    _apply_cookies(session, cookies)
+
+    try:
+        rows = fetch_all_prices(session)
+    except SessionExpiredError as e:
+        print(f"[AS24] {e}")
+        # Bandome atnaujinti sesija per UI dialog
+        try:
+            from as24_relogin import run_relogin
+            ok = run_relogin()
+        except Exception as re_err:
+            print(f"[AS24] Relogin klaida: {re_err}")
+            ok = False
+
+        if not ok:
+            print("[AS24] Sesija neatnaujinta — grazinami tustys rezultatai.")
+            return {"diesel": [], "adblue": []}
+
+        # Perkrauname cookies ir bandome dar karta
+        print("[AS24] Sesija atnaujinta — bandome is naujo...")
+        session = _make_session()
+        cookies = load_cookies()
+        _apply_cookies(session, cookies)
+        rows = fetch_all_prices(session)  # Jei vel klada — leidžiame jai plisti
 
     diesel_results = scrape_diesel(rows, today)
     adblue_results = scrape_adblue(rows, today)
