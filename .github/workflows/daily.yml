@@ -41,7 +41,7 @@ jobs:
           AS24_PASSWORD: ${{ secrets.AS24_PASSWORD }}
           AS24_CLIENT_ID: ${{ secrets.AS24_CLIENT_ID }}
           AS24_STORAGE_STATE: ${{ secrets.AS24_STORAGE_STATE }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
         run: python main.py
         continue-on-error: true
