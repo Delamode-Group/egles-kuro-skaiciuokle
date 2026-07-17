@@ -255,43 +255,18 @@ async def _scrape_neste_impl():
                     return results  # Grazinami tustys rezultatai, nesaugome cookies
                 # ──────────────────────────────────────────────────────────
 
-            # -- 2. Navigacija --
+            # -- 2. Navigacija: tiesiai i "Sutarties kainos ir nuolaidos" --
             await page.wait_for_timeout(800)
             await debug_screenshot(page, "06_neste_looking_for_menu")
 
-            links = await page.query_selector_all("a")
-            link_texts = []
-            for link in links[:50]:
-                text = (await link.inner_text()).strip()
-                if text and len(text) > 2:
-                    link_texts.append(text)
-            print(f"[Neste] Matomos nuorodos: {link_texts[:20]}")
+            PRICE_URL = "https://www.neste.lt/lt/price-reports/card"
+            print(f"[Neste] Einame tiesiai i: {PRICE_URL}")
+            await page.goto(PRICE_URL, wait_until="load", timeout=30000)
+            await page.wait_for_timeout(2000)
+            await debug_screenshot(page, "07_neste_price_reports")
 
-            # Bandome rasti "Sutarties kainos" arba panasu
-            kainos_link = page.locator('a:has-text("kainos"), a:has-text("Kainos"), a:has-text("Sutarties"), a[href*="kainos"], a[href*="price"]')
-            kainos_count = await kainos_link.count()
-            print(f"[Neste] 'Kainos' nuorodu rasta: {kainos_count}")
-
-            if kainos_count > 0:
-                await kainos_link.first.click()
-                await page.wait_for_load_state("load", timeout=10000)
-                await debug_screenshot(page, "07_neste_kainos_page")
-            else:
-                # Bandome Ekstraneta
-                ekstranetas = page.locator('a:has-text("Ekstranetas"), a:has-text("ekstranetas"), a[href*="extranetas"], a[href*="ekstra"]')
-                ekstra_count = await ekstranetas.count()
-                print(f"[Neste] 'Ekstranetas' nuorodu: {ekstra_count}")
-                if ekstra_count > 0:
-                    await ekstranetas.first.click()
-                    await page.wait_for_load_state("load", timeout=10000)
-                    await debug_screenshot(page, "07_neste_ekstranetas")
-
-                kainos_link2 = page.locator('a:has-text("kainos"), a:has-text("Kainos"), a:has-text("Sutarties")')
-                kainos_count2 = await kainos_link2.count()
-                print(f"[Neste] 'Kainos' nuorodu (2 bandymas): {kainos_count2}")
-                if kainos_count2 > 0:
-                    await kainos_link2.first.click()
-                    await page.wait_for_load_state("load", timeout=10000)
+            page_head = (await page.inner_text("body"))[:800].replace("\n", " | ")
+            print(f"[Neste] Puslapio pradzia: {page_head}")
 
             await debug_screenshot(page, "08_neste_final_state")
             print(f"[Neste] Galutinis URL: {page.url}")
