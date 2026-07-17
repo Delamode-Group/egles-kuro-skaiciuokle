@@ -268,6 +268,62 @@ async def _scrape_neste_impl():
             page_head = (await page.inner_text("body"))[:800].replace("\n", " | ")
             print(f"[Neste] Puslapio pradzia: {page_head}")
 
+            # -- 2b. Uzpildome ataskaitos forma (klientas, salis, data) --
+            try:
+                selects = page.locator("select")
+                sel_count = await selects.count()
+                print(f"[Neste] Select lauku: {sel_count}")
+                client_done = False
+                country_done = False
+                for i in range(sel_count):
+                    sel = selects.nth(i)
+                    opts = await sel.evaluate("el => Array.from(el.options).map(o => o.text.trim())")
+                    print(f"[Neste] Select #{i} opcijos: {opts[:15]}")
+                    low = [o.lower() for o in opts]
+                    if not country_done and any("lietuva" in o for o in low):
+                        target = next((o for o in opts if o.lower() == "lietuva"), None) or next(o for o in opts if "lietuva" in o.lower())
+                        await sel.select_option(label=target)
+                        print(f"[Neste] Pasirinkta salis: {target}")
+                        country_done = True
+                        continue
+                    if not client_done:
+                        target = next((o for o in opts if "delamode" in o.lower()), None)
+                        if target is None:
+                            real = [o for o in opts if o and "pasirink" not in o.lower()]
+                            target = real[0] if real else None
+                        if target:
+                            await sel.select_option(label=target)
+                            print(f"[Neste] Pasirinktas klientas: {target}")
+                            client_done = True
+                await page.wait_for_timeout(500)
+
+                # Data: bandome date input, po to text input
+                dd, mm, yy = report_date.split(".")
+                date_inputs = page.locator("input[type='date']")
+                if await date_inputs.count() > 0:
+                    await date_inputs.first.fill(f"{yy}-{mm}-{dd}")
+                    print(f"[Neste] Data ivesta (date input): {yy}-{mm}-{dd}")
+                else:
+                    txt_inputs = page.locator("input[type='text']:visible")
+                    ti = await txt_inputs.count()
+                    print(f"[Neste] Matomu text inputu: {ti}")
+                    if ti > 0:
+                        await txt_inputs.first.fill(report_date)
+                        print(f"[Neste] Data ivesta (text input): {report_date}")
+
+                submit_btn = page.locator('button:has-text("saugoti"), input[type="submit"], button[type="submit"]')
+                if await submit_btn.count() > 0:
+                    await submit_btn.first.click()
+                    print("[Neste] Paspausta 'Issaugoti pasirinkimus'")
+                    await page.wait_for_timeout(5000)
+                    await debug_screenshot(page, "09_neste_report")
+                    rep_head = (await page.inner_text("body"))[:600].replace("\n", " | ")
+                    print(f"[Neste] Po formos: {rep_head}")
+                else:
+                    print("[Neste] Submit mygtukas nerastas")
+            except Exception as fe:
+                print(f"[Neste] Formos pildymo klaida: {fe}")
+
             await debug_screenshot(page, "08_neste_final_state")
             print(f"[Neste] Galutinis URL: {page.url}")
 
