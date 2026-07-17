@@ -331,17 +331,22 @@ async def _scrape_neste_impl():
                                 continue
 
             # ── Cookies issaugojimas ───────────────────────────────────
-            try:
-                os.makedirs(os.path.dirname(config.NESTE_COOKIES), exist_ok=True)
-                await context.storage_state(path=config.NESTE_COOKIES)
-                print(f"[Neste] Cookies issaugoti: {config.NESTE_COOKIES}")
+            # Saugome TIK kai sesija tikrai veike (rastos kainos) — kitaip
+            # perrasytume geras cookies neprisijungusios sesijos duomenimis.
+            if results["diesel"] is None and results["adblue"] is None:
+                print("[Neste] Kainos nerastos — cookies neissaugomos (kad neperrasytu geru).")
+            else:
+                try:
+                    os.makedirs(os.path.dirname(config.NESTE_COOKIES), exist_ok=True)
+                    await context.storage_state(path=config.NESTE_COOKIES)
+                    print(f"[Neste] Cookies issaugoti: {config.NESTE_COOKIES}")
 
-                with open(config.NESTE_COOKIES, "r", encoding="utf-8") as _f:
-                    _storage_json = _f.read()
-                from as24_relogin import update_github_secret
-                update_github_secret(_storage_json, secret_name="NESTE_STORAGE_STATE")
-            except Exception as _ce:
-                print(f"[Neste] Cookie save klaida (nekritine): {_ce}")
+                    with open(config.NESTE_COOKIES, "r", encoding="utf-8") as _f:
+                        _storage_json = _f.read()
+                    from as24_relogin import update_github_secret
+                    update_github_secret(_storage_json, secret_name="NESTE_STORAGE_STATE")
+                except Exception as _ce:
+                    print(f"[Neste] Cookie save klaida (nekritine): {_ce}")
             # ──────────────────────────────────────────────────────────
 
             # Istiname laikina faila jei buvo sukurtas
