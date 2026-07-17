@@ -172,7 +172,8 @@ def scrape_ck_diesel():
 def scrape_ck_adblue():
     """
     Nuskaito CK AdBlue kaina is circlek.lt puslapio.
-    Kaina rodoma su PVM — saugome kaip yra.
+    Kaina puslapyje rodoma SU PVM — konvertuojame i be PVM (21%),
+    kad sutaptu su istorija ir kitais saltiniais.
     """
     if not config.CK_ADBLUE_URL:
         print("[CK] AdBlue URL nenustatytas, praleidziama")
@@ -212,8 +213,11 @@ def scrape_ck_adblue():
     if price is None:
         raise ValueError("Nepavyko rasti AdBlue kainos CK puslapyje")
 
+    # Puslapyje kaina su PVM -> saugome be PVM
+    price = round(price / 1.21, 4)
+
     today = datetime.now().strftime("%Y-%m-%d")
-    print(f"[CK] AdBlue: {price} EUR/l ({today})")
+    print(f"[CK] AdBlue: {price} EUR/l be PVM ({today})")
     return {"date": today, "price": price}
 
 
