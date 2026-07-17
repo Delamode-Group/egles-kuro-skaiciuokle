@@ -345,7 +345,7 @@ async def _scrape_neste_impl():
 
                 await page.wait_for_timeout(500)
 
-                submit_btn = page.locator('#edit-submit, button:has-text("saugoti"), input[type="submit"], button[type="submit"]')
+                submit_btn = page.locator('form:has(#edit-price-date) input[type="submit"], form:has(#edit-price-date) button[type="submit"], #edit-submit--2')
                 sb = await submit_btn.count()
                 print(f"[Neste] Submit kandidatu: {sb}")
                 if sb > 0:
