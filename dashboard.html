@@ -134,6 +134,14 @@ body{font-family:var(--F);background:var(--bg0);color:var(--t1);min-height:100vh
   <button class="nav-b" data-t="table">◫ Lentelė</button>
   <button class="nav-b" data-t="src">◎ Šaltiniai</button>
 </nav>
+<nav class="nav" id="pnav" title="Grafiku periodas (vidutinė kaina)">
+  <button class="nav-b on" data-p="day">Diena</button>
+  <button class="nav-b" data-p="week">Savaitė</button>
+  <button class="nav-b" data-p="month">Mėnuo</button>
+  <button class="nav-b" data-p="quarter">Ketvirtis</button>
+  <button class="nav-b" data-p="half">Pusmetis</button>
+  <button class="nav-b" data-p="year">Metai</button>
+</nav>
 <div class="hdr-right">
   <div class="dot" id="dot"></div>
   <button class="rbtn" onclick="init()">↻</button>
@@ -210,6 +218,15 @@ function toggleTheme(){
 document.querySelectorAll('.nav-b').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.nav-b').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
+  document.querySelectorAll('#pnav .nav-b').forEach(b => {
+    b.classList.toggle('on', b.dataset.p === PERIOD);
+    b.addEventListener('click', () => {
+      PERIOD = b.dataset.p;
+      try { localStorage.setItem('kp_period', PERIOD); } catch(e) {}
+      document.querySelectorAll('#pnav .nav-b').forEach(x => x.classList.toggle('on', x === b));
+      rebuildCharts();
+    });
+  });
   ['dash','adblue','table','src'].forEach(t =>
     document.getElementById('tab-'+t).classList.toggle('hidden', t !== b.dataset.t));
   setTimeout(() => Object.values(charts).forEach(c => c.resize()), 50);
@@ -242,6 +259,43 @@ async function init(){
 // ══════════════════════════════════════════════
 // Rendering
 // ══════════════════════════════════════════════
+let PERIOD = localStorage.getItem('kp_period') || 'day';
+
+function isoWeekKey(y, m, d){
+  const t = new Date(Date.UTC(y, m-1, d));
+  const dayn = (t.getUTCDay() + 6) % 7;
+  t.setUTCDate(t.getUTCDate() - dayn + 3);
+  const w1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const wk = 1 + Math.round(((t - w1) / 86400000 - 3 + ((w1.getUTCDay() + 6) % 7)) / 7);
+  return t.getUTCFullYear() + '-W' + String(wk).padStart(2, '0');
+}
+
+function aggregateSeries(dates, data, period){
+  if (period === 'day' || !dates || !dates.length) return {dates: dates, data: data, labels: null};
+  const buckets = new Map();
+  for (let i = 0; i < dates.length; i++){
+    const v = data[i];
+    if (v == null) continue;
+    const ds = dates[i];
+    const y = +ds.slice(0,4), m = +ds.slice(5,7), d = +ds.slice(8,10);
+    let key;
+    if (period === 'week') key = isoWeekKey(y, m, d);
+    else if (period === 'month') key = ds.slice(0, 7);
+    else if (period === 'quarter') key = y + '-Q' + Math.ceil(m / 3);
+    else if (period === 'half') key = y + '-H' + (m <= 6 ? 1 : 2);
+    else key = String(y);
+    if (!buckets.has(key)) buckets.set(key, {s: 0, n: 0, first: ds});
+    const b = buckets.get(key);
+    b.s += v; b.n += 1;
+  }
+  const keys = [...buckets.keys()].sort((a, b) => buckets.get(a).first < buckets.get(b).first ? -1 : 1);
+  return {
+    dates: keys.map(k => buckets.get(k).first),
+    data: keys.map(k => +(buckets.get(k).s / buckets.get(k).n).toFixed(4)),
+    labels: keys,
+  };
+}
+
 function render(){
   renderCards('dz-cards', getDieselSeries());
   renderCards('ab-cards', getAdblueSeries());
@@ -268,7 +322,7 @@ function getDieselSeries(){
 
 function getAdblueSeries(){
   const s = [
-    {id:'ck-ab', title:'CK (Circle K)', sub:'AdBlue · EUR/l su PVM', color:'var(--teal)', dates:DATA.ck_ab.dates, data:DATA.ck_ab.data, key:'ck_ab'},
+    {id:'ck-ab', title:'CK (Circle K)', sub:'AdBlue · EUR/l be PVM', color:'var(--teal)', dates:DATA.ck_ab.dates, data:DATA.ck_ab.data, key:'ck_ab'},
     {id:'neste-ab', title:'Neste', sub:'AdBlue · EUR/l be PVM', color:'var(--amber)', dates:DATA.neste_ab.dates, data:DATA.neste_ab.data, key:'neste_ab'},
   ];
   if (DATA.as24_ab) DATA.as24_ab.forEach((co,i) => {
@@ -321,7 +375,8 @@ function renderCards(containerId, series){
     `;
 
     c.appendChild(card);
-    buildChart(canvasId, s.dates, s.data, clr);
+    const agg = aggregateSeries(s.dates, s.data, PERIOD);
+    buildChart(canvasId, agg.dates, agg.data, clr, agg.labels);
   });
 }
 
@@ -391,15 +446,15 @@ function calcWeekChange(data){
   return {html:`<span class="kpi-tr ${cls}">${sign}${diff.toFixed(4)} (${sign}${pct}%) vs sav. vid.</span>`};
 }
 
-function buildChart(canvasId, dates, data, colorVar){
+function buildChart(canvasId, dates, data, colorVar, periodLabels){
   const color = getCSSVar(colorVar);
   const gridColor = getCSSVar('var(--brd)');
   const textColor = getCSSVar('var(--t4)');
 
-  // +3 empty days
+  // +3 empty days (tik dienos rezime)
   const extDates = [...dates];
   const extData = [...data];
-  if (dates.length) {
+  if (!periodLabels && dates.length) {
     let d = new Date(dates[dates.length-1]);
     for (let i = 0; i < 3; i++) { d.setDate(d.getDate()+1); extDates.push(d.toISOString().split('T')[0]); extData.push(null); }
   }
@@ -415,7 +470,7 @@ function buildChart(canvasId, dates, data, colorVar){
   const chart = new Chart(ctx.getContext('2d'), {
     type:'line',
     data:{
-      labels: extDates.map(d => { const p=d.split('-'); return p[1]+'-'+p[2]; }),
+      labels: periodLabels ? [...periodLabels] : extDates.map(d => { const p=d.split('-'); return p[1]+'-'+p[2]; }),
       datasets:[{
         data: extData,
         borderColor: color,
