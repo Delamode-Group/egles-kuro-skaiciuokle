@@ -302,7 +302,7 @@ function renderCards(containerId, series){
     const canvasId = 'c-' + s.id;
 
     card.innerHTML = `
-      <div class="kpi-ac" style="background:${getCSSVar(s.color)}"></div>
+      <div class="kpi-ac" style="background:${getCSSVar(clr)}"></div>
       <div class="kpi-lbl">${s.title}</div>
       <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px">
         <div>
@@ -321,7 +321,7 @@ function renderCards(containerId, series){
     `;
 
     c.appendChild(card);
-    buildChart(canvasId, s.dates, s.data, s.color);
+    buildChart(canvasId, s.dates, s.data, clr);
   });
 }
 
