@@ -348,28 +348,45 @@ function renderCards(containerId, series){
     card.className = 'kpi';
     card.style.animationDelay = (si * .05) + 's';
 
-    const last = s.data[s.data.length-1];
-    const prev = s.data.length >= 2 ? s.data[s.data.length-2] : null;
-    const clr = getColor(last, prev);
-    const chg = calcChange(last, prev);
-    const wkChg = calcWeekChange(s.data);
-    const moChg = calcHistChange(s.dates, s.data, 1, 0, 'vs prie\u0161 m\u0117n.');
-    const yrChg = calcHistChange(s.dates, s.data, 0, 1, 'vs prie\u0161 metus');
+    const agg = aggregateSeries(s.dates, s.data, PERIOD);
     const canvasId = 'c-' + s.id;
+
+    let kpiVal, clr, ftHtml, valDate;
+    if (PERIOD === 'day') {
+      // Dienos rezimas: paskutine diena + vs vakar / sav. / men. / metus
+      const last = s.data[s.data.length-1];
+      const prev = s.data.length >= 2 ? s.data[s.data.length-2] : null;
+      kpiVal = last; clr = getColor(last, prev);
+      valDate = s.dates[s.dates.length-1] || '';
+      const chg = calcChange(last, prev);
+      const wkChg = calcWeekChange(s.data);
+      const moChg = calcHistChange(s.dates, s.data, 1, 0, 'vs prie\u0161 m\u0117n.');
+      const yrChg = calcHistChange(s.dates, s.data, 0, 1, 'vs prie\u0161 metus');
+      ftHtml = `<div class="kpi-ft">${chg.html}<span class="kpi-s">${valDate}</span></div>`
+        + (wkChg.html ? '<div class="kpi-ft" style="margin-top:2px">'+wkChg.html+'</div>' : '')
+        + (moChg.html ? '<div class="kpi-ft" style="margin-top:2px">'+moChg.html+'</div>' : '')
+        + (yrChg.html ? '<div class="kpi-ft" style="margin-top:2px">'+yrChg.html+'</div>' : '');
+    } else {
+      // Periodo rezimas: to periodo vidutine + vs praeitas periodas / prie\u0161 metus
+      const n = agg.data.length;
+      const cur = agg.data[n-1];
+      const prevP = n >= 2 ? agg.data[n-2] : null;
+      kpiVal = cur; clr = getColor(cur, prevP);
+      valDate = (agg.labels && agg.labels[n-1]) || '';
+      const pLabel = {week:'vs praeita sav.', month:'vs praeit\u0105 m\u0117n.', quarter:'vs praeit\u0105 ketv.', half:'vs praeit\u0105 pusm.', year:'vs praeitus metus'}[PERIOD];
+      const curChg = calcPeriodChange(cur, prevP, pLabel);
+      const yrChg = calcPeriodYearAgo(agg, PERIOD);
+      ftHtml = `<div class="kpi-ft">${curChg.html}<span class="kpi-s">${valDate} vid.</span></div>`
+        + (yrChg.html ? '<div class="kpi-ft" style="margin-top:2px">'+yrChg.html+'</div>' : '');
+    }
 
     card.innerHTML = `
       <div class="kpi-ac" style="background:${getCSSVar(clr)}"></div>
       <div class="kpi-lbl">${s.title}</div>
       <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="kpi-val" style="color:${clr}">${last != null ? last.toFixed(4) : '—'} <span style="font-size:12px;font-weight:400;color:var(--t4)">€/l</span></div>
-          <div class="kpi-ft">
-            ${chg.html}
-            <span class="kpi-s">${s.dates[s.dates.length-1] || ''}</span>
-          </div>
-          ${wkChg.html ? '<div class="kpi-ft" style="margin-top:2px">'+wkChg.html+'</div>' : ''}
-          ${moChg.html ? '<div class="kpi-ft" style="margin-top:2px">'+moChg.html+'</div>' : ''}
-          ${yrChg.html ? '<div class="kpi-ft" style="margin-top:2px">'+yrChg.html+'</div>' : ''}
+          <div class="kpi-val" style="color:${clr}">${kpiVal != null ? kpiVal.toFixed(4) : '—'} <span style="font-size:12px;font-weight:400;color:var(--t4)">€/l</span></div>
+          ${ftHtml}
         </div>
         <div style="font-size:9px;color:var(--t5)">${s.sub}</div>
       </div>
@@ -377,12 +394,7 @@ function renderCards(containerId, series){
     `;
 
     c.appendChild(card);
-    const agg = aggregateSeries(s.dates, s.data, PERIOD);
-    // Grafiko spalva: dienos rezime - pagal vakar; kitaip - pagal periodo pokyti
-    const chartClr = (PERIOD === 'day')
-      ? clr
-      : getColor(agg.data[agg.data.length-1], agg.data.length >= 2 ? agg.data[agg.data.length-2] : null);
-    buildChart(canvasId, agg.dates, agg.data, chartClr, agg.labels);
+    buildChart(canvasId, agg.dates, agg.data, clr, agg.labels);
   });
 }
 
@@ -438,6 +450,36 @@ function calcHistChange(dates, data, monthsBack, yearsBack, label){
   const cls = diff > 0 ? 'up' : diff < 0 ? 'dn' : '';
   const arrow = diff > 0 ? '\u25b2' : diff < 0 ? '\u25bc' : '';
   return {html:'<span class="kpi-tr ' + cls + '">' + arrow + ' ' + sign + diff.toFixed(4) + ' (' + sign + pct + '%) ' + label + ' (' + dates[idx] + ')</span>'};
+}
+
+function calcPeriodChange(cur, prev, label){
+  if (cur == null || prev == null) return {html:''};
+  const diff = cur - prev;
+  const pct = prev !== 0 ? ((diff/prev)*100).toFixed(2) : '0';
+  const sign = diff > 0 ? '+' : '';
+  const cls = diff > 0 ? 'up' : diff < 0 ? 'dn' : '';
+  const arrow = diff > 0 ? '\u25b2' : diff < 0 ? '\u25bc' : '';
+  return {html:'<span class="kpi-tr ' + cls + '">' + arrow + ' ' + sign + diff.toFixed(4) + ' (' + sign + pct + '%) ' + label + '</span>'};
+}
+
+function calcPeriodYearAgo(agg, period){
+  if (!agg.labels || agg.labels.length < 2) return {html:''};
+  const n = agg.labels.length;
+  const curLabel = agg.labels[n-1];
+  const cur = agg.data[n-1];
+  const y = parseInt(curLabel.slice(0,4), 10);
+  const rest = curLabel.slice(4);
+  const target = (y-1) + rest;  // pvz 2026-W29 -> 2025-W29, 2026-07 -> 2025-07
+  const idx = agg.labels.indexOf(target);
+  if (idx < 0 || cur == null) return {html:''};
+  const base = agg.data[idx];
+  if (base == null) return {html:''};
+  const diff = cur - base;
+  const pct = base !== 0 ? ((diff/base)*100).toFixed(2) : '0';
+  const sign = diff > 0 ? '+' : '';
+  const cls = diff > 0 ? 'up' : diff < 0 ? 'dn' : '';
+  const arrow = diff > 0 ? '\u25b2' : diff < 0 ? '\u25bc' : '';
+  return {html:'<span class="kpi-tr ' + cls + '">' + arrow + ' ' + sign + diff.toFixed(4) + ' (' + sign + pct + '%) vs prie\u0161 metus (' + target + ')</span>'};
 }
 
 function calcWeekChange(data){
