@@ -214,23 +214,26 @@ function toggleTheme(){
   } catch(_){}
 })();
 
-// ── Navigation ──
-document.querySelectorAll('.nav-b').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('.nav-b').forEach(x => x.classList.remove('on'));
+// ── Navigation (tik tabai su data-t) ──
+document.querySelectorAll('.nav-b[data-t]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.nav-b[data-t]').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
-  document.querySelectorAll('#pnav .nav-b').forEach(b => {
-    b.classList.toggle('on', b.dataset.p === PERIOD);
-    b.addEventListener('click', () => {
-      PERIOD = b.dataset.p;
-      try { localStorage.setItem('kp_period', PERIOD); } catch(e) {}
-      document.querySelectorAll('#pnav .nav-b').forEach(x => x.classList.toggle('on', x === b));
-      rebuildCharts();
-    });
-  });
   ['dash','adblue','table','src'].forEach(t =>
     document.getElementById('tab-'+t).classList.toggle('hidden', t !== b.dataset.t));
   setTimeout(() => Object.values(charts).forEach(c => c.resize()), 50);
 }));
+
+// ── Periodo perjungiklis (tik #pnav) ──
+document.querySelectorAll('#pnav .nav-b').forEach(b => {
+  b.classList.toggle('on', b.dataset.p === PERIOD);
+  b.addEventListener('click', () => {
+    PERIOD = b.dataset.p;
+    try { localStorage.setItem('kp_period', PERIOD); } catch(e) {}
+    document.querySelectorAll('#pnav .nav-b').forEach(x => x.classList.toggle('on', x === b));
+    rebuildCharts();
+    setTimeout(() => Object.values(charts).forEach(c => c.resize()), 50);
+  });
+});
 
 // ══════════════════════════════════════════════
 // Data Loading
