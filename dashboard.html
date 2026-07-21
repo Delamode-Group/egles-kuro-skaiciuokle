@@ -595,16 +595,7 @@ function buildChart(canvasId, dates, data, colorVar, periodLabels){
 
 // ── Table ──
 function renderTable(){
-  const allDates = new Set();
-  const addD = (d) => d.forEach(x=>allDates.add(x));
-  addD(DATA.ck_dz.dates); addD(DATA.neste_dz.dates); addD(DATA.ck_ab.dates); addD(DATA.neste_ab.dates);
-  if(DATA.as24_dz) DATA.as24_dz.forEach(s=>addD(s.dates));
-  if(DATA.as24_ab) DATA.as24_ab.forEach(s=>addD(s.dates));
-  const dates = [...allDates].sort().reverse();
-  const showDates = dates;  // visa istorija (naujausios virsuje)
-
   const sources = getAllSources();
-  document.getElementById('tbl-count').textContent = dates.length + ' dienų';
 
   // Ne redagavimo rezime — uzpildome spragas paskutine kaina (carry-forward).
   // Redagavimo rezime rodome tikrus duomenis (kad redaguotum realias reiksmes).
@@ -616,6 +607,21 @@ function renderTable(){
     for (let i = 0; i < f.dates.length; i++) m[f.dates[i]] = f.data[i];
     return {map: m, series};
   });
+
+  // Datu asis: EM — realios datos; kitaip — visos dienos is uzpildytu seriju
+  const allDates = new Set();
+  if (EM) {
+    const addD = (d) => d.forEach(x=>allDates.add(x));
+    addD(DATA.ck_dz.dates); addD(DATA.neste_dz.dates); addD(DATA.ck_ab.dates); addD(DATA.neste_ab.dates);
+    if(DATA.as24_dz) DATA.as24_dz.forEach(s=>addD(s.dates));
+    if(DATA.as24_ab) DATA.as24_ab.forEach(s=>addD(s.dates));
+  } else {
+    lookup.forEach(lk => { for (const d in lk.map) allDates.add(d); });
+  }
+  const dates = [...allDates].sort().reverse();
+  const showDates = dates;  // visa istorija (naujausios virsuje)
+
+  document.getElementById('tbl-count').textContent = dates.length + ' dienų';
 
   let html = '<table><thead><tr><th style="min-width:90px">Data</th>';
   sources.forEach(s => html += `<th style="min-width:70px">${s.short}</th>`);
