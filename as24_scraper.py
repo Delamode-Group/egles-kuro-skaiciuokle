@@ -243,6 +243,23 @@ def scrape_as24():
     diesel_results = scrape_diesel(rows, today)
     adblue_results = scrape_adblue(rows, today)
 
+    # ── Sesijos "riedejimas": po sekmingo surinkimo issaugome atnaujintas
+    # cookies atgal i AS24_STORAGE_STATE, kad sesija pratesetu save automatiskai
+    # (kaip Neste). Taip nereikia kas kelias dienas prisijungti rankiniu budu. ──
+    try:
+        merged = dict(cookies)  # senos + serverio atnaujintos (Set-Cookie)
+        for c in session.cookies:
+            merged[c.name] = c.value
+        storage = {"cookies": [
+            {"name": k, "value": v, "domain": ".extranet.as24.com", "path": "/"}
+            for k, v in merged.items()
+        ]}
+        from as24_relogin import update_github_secret
+        update_github_secret(json.dumps(storage, ensure_ascii=False),
+                             secret_name="AS24_STORAGE_STATE")
+    except Exception as _ce:
+        print(f"[AS24] Cookie riedejimo klaida (nekritine): {_ce}")
+
     return {"diesel": diesel_results, "adblue": adblue_results}
 
 
