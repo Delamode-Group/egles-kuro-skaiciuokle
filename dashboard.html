@@ -298,7 +298,38 @@ function aggregateSeries(dates, data, period){
   };
 }
 
+let GLOBAL_END = null;
+
+function computeGlobalEnd(){
+  let mx = '';
+  const chk = (arr) => { if (arr && arr.length) { const d = arr[arr.length-1]; if (d > mx) mx = d; } };
+  chk(DATA.ck_dz.dates); chk(DATA.neste_dz.dates); chk(DATA.ck_ab.dates); chk(DATA.neste_ab.dates);
+  if (DATA.as24_dz) DATA.as24_dz.forEach(s => chk(s.dates));
+  if (DATA.as24_ab) DATA.as24_ab.forEach(s => chk(s.dates));
+  return mx || null;
+}
+
+// Uzpildo praleistas dienas paskutine zinoma kaina (carry-forward) iki GLOBAL_END.
+// Leading (pries pirma reiksme) spragos NEuzpildomos.
+function fillForward(dates, data){
+  if (!dates || !dates.length || !GLOBAL_END) return {dates: dates || [], data: data || []};
+  const map = {};
+  for (let i = 0; i < dates.length; i++) map[dates[i]] = data[i];
+  const outD = [], outV = [];
+  let cur = new Date(dates[0] + 'T00:00:00Z');
+  const end = new Date(GLOBAL_END + 'T00:00:00Z');
+  let last = null;
+  while (cur <= end) {
+    const ds = cur.toISOString().slice(0, 10);
+    if (map[ds] != null) last = map[ds];
+    if (last != null) { outD.push(ds); outV.push(last); }
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return {dates: outD, data: outV};
+}
+
 function render(){
+  GLOBAL_END = computeGlobalEnd();
   renderCards('dz-cards', getDieselSeries());
   renderCards('ab-cards', getAdblueSeries());
   renderTable();
@@ -312,23 +343,29 @@ function rebuildCharts(){
 }
 
 function getDieselSeries(){
+  const ck = fillForward(DATA.ck_dz.dates, DATA.ck_dz.data);
+  const ne = fillForward(DATA.neste_dz.dates, DATA.neste_dz.data);
   const s = [
-    {id:'ck-dz', title:'CK (Orlen LT)', sub:'Dyzelinas E kl. su RRME · EUR/l be PVM', color:'var(--cyan)', dates:DATA.ck_dz.dates, data:DATA.ck_dz.data, key:'ck_dz'},
-    {id:'neste-dz', title:'Neste', sub:'Diesel Futura · EUR/l be PVM', color:'var(--orange)', dates:DATA.neste_dz.dates, data:DATA.neste_dz.data, key:'neste_dz'},
+    {id:'ck-dz', title:'CK (Orlen LT)', sub:'Dyzelinas E kl. su RRME · EUR/l be PVM', color:'var(--cyan)', dates:ck.dates, data:ck.data, key:'ck_dz'},
+    {id:'neste-dz', title:'Neste', sub:'Diesel Futura · EUR/l be PVM', color:'var(--orange)', dates:ne.dates, data:ne.data, key:'neste_dz'},
   ];
   if (DATA.as24_dz) DATA.as24_dz.forEach((st,i) => {
-    s.push({id:'as24-dz-'+i, title:'AS24 – '+st.name, sub:flag(st.country)+' '+st.country+' · Dyzelinas · EUR/l be PVM', color:'var(--purple)', dates:st.dates, data:st.data, key:'as24_dz', idx:i});
+    const f = fillForward(st.dates, st.data);
+    s.push({id:'as24-dz-'+i, title:'AS24 – '+st.name, sub:flag(st.country)+' '+st.country+' · Dyzelinas · EUR/l be PVM', color:'var(--purple)', dates:f.dates, data:f.data, key:'as24_dz', idx:i});
   });
   return s;
 }
 
 function getAdblueSeries(){
+  const ck = fillForward(DATA.ck_ab.dates, DATA.ck_ab.data);
+  const ne = fillForward(DATA.neste_ab.dates, DATA.neste_ab.data);
   const s = [
-    {id:'ck-ab', title:'CK (Circle K)', sub:'AdBlue · EUR/l be PVM', color:'var(--teal)', dates:DATA.ck_ab.dates, data:DATA.ck_ab.data, key:'ck_ab'},
-    {id:'neste-ab', title:'Neste', sub:'AdBlue · EUR/l be PVM', color:'var(--amber)', dates:DATA.neste_ab.dates, data:DATA.neste_ab.data, key:'neste_ab'},
+    {id:'ck-ab', title:'CK (Circle K)', sub:'AdBlue · EUR/l be PVM', color:'var(--teal)', dates:ck.dates, data:ck.data, key:'ck_ab'},
+    {id:'neste-ab', title:'Neste', sub:'AdBlue · EUR/l be PVM', color:'var(--amber)', dates:ne.dates, data:ne.data, key:'neste_ab'},
   ];
   if (DATA.as24_ab) DATA.as24_ab.forEach((co,i) => {
-    s.push({id:'as24-ab-'+i, title:'AS24 – '+co.name, sub:flag(co.code)+' '+co.code+' · AdBlue · EUR/l be PVM', color:'var(--blue)', dates:co.dates, data:co.data, key:'as24_ab', idx:i});
+    const f = fillForward(co.dates, co.data);
+    s.push({id:'as24-ab-'+i, title:'AS24 – '+co.name, sub:flag(co.code)+' '+co.code+' · AdBlue · EUR/l be PVM', color:'var(--blue)', dates:f.dates, data:f.data, key:'as24_ab', idx:i});
   });
   return s;
 }
@@ -569,19 +606,31 @@ function renderTable(){
   const sources = getAllSources();
   document.getElementById('tbl-count').textContent = dates.length + ' dienų';
 
+  // Ne redagavimo rezime — uzpildome spragas paskutine kaina (carry-forward).
+  // Redagavimo rezime rodome tikrus duomenis (kad redaguotum realias reiksmes).
+  const lookup = sources.map(s => {
+    const series = getSeries(s);
+    if (EM) return {map: null, series};
+    const f = fillForward(series.dates, series.data);
+    const m = {};
+    for (let i = 0; i < f.dates.length; i++) m[f.dates[i]] = f.data[i];
+    return {map: m, series};
+  });
+
   let html = '<table><thead><tr><th style="min-width:90px">Data</th>';
   sources.forEach(s => html += `<th style="min-width:70px">${s.short}</th>`);
   html += '</tr></thead><tbody>';
 
   showDates.forEach(date => {
     html += `<tr><td>${date}</td>`;
-    sources.forEach(s => {
-      const series = getSeries(s);
-      const idx = series.dates.indexOf(date);
-      const val = idx >= 0 ? series.data[idx] : null;
+    sources.forEach((s, si) => {
+      const lk = lookup[si];
       if (EM) {
+        const idx = lk.series.dates.indexOf(date);
+        const val = idx >= 0 ? lk.series.data[idx] : null;
         html += `<td><input class="ei" type="text" value="${val!=null?val:''}" data-key="${s.key}" data-idx="${s.idx!=null?s.idx:''}" data-date="${date}"></td>`;
       } else {
+        const val = lk.map[date];
         html += `<td>${val!=null?val.toFixed(4):'—'}</td>`;
       }
     });
