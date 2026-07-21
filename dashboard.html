@@ -309,24 +309,32 @@ function computeGlobalEnd(){
   return mx || null;
 }
 
-// Uzpildo praleistas dienas paskutine zinoma kaina (carry-forward), bet TIK IKI
-// paskutines TIKROS tos serijos datos. Uz jos (pvz. siandien, kol kainos dar
-// nesurinktos) NEuzpildo — lieka tuscia, lenteleje rodoma "—". Kita diena, kai
-// atsiranda tikra kaina, ta diena uzsipildo, o naujausia diena vel lieka "—".
-// Leading (pries pirma reiksme) spragos taip pat NEuzpildomos.
+// Uzpildo praleistas dienas paskutine zinoma kaina (carry-forward) IKI VAKAR
+// dienos. Naujausia diena (GLOBAL_END = "siandien") rodoma TIK jei tai TIKRA tos
+// serijos reiksme — kitaip lieka tuscia (lenteleje "—"), nes Orlen/Neste tos
+// dienos kaina dar nesurinkta. Kita diena ji uzsipildo, o naujausia diena vel
+// lieka "—". Taip bruksnelis atsiranda TIK naujausiai dienai, o ne visai
+// spragai (pvz. jei CK AB tikri duomenys pasibaige anksciau, tarpines dienos
+// vis tiek uzpildomos, o bruksnelis lieka tik siandienai).
+// Leading (pries pirma reiksme) spragos NEuzpildomos.
 function fillForward(dates, data){
-  if (!dates || !dates.length) return {dates: dates || [], data: data || []};
+  if (!dates || !dates.length || !GLOBAL_END) return {dates: dates || [], data: data || []};
   const map = {};
   for (let i = 0; i < dates.length; i++) map[dates[i]] = data[i];
   const sorted = dates.slice().sort();
   const outD = [], outV = [];
   let cur = new Date(sorted[0] + 'T00:00:00Z');
-  const end = new Date(sorted[sorted.length-1] + 'T00:00:00Z');
+  const end = new Date(GLOBAL_END + 'T00:00:00Z');
   let last = null;
   while (cur <= end) {
     const ds = cur.toISOString().slice(0, 10);
     if (map[ds] != null) last = map[ds];
-    if (last != null) { outD.push(ds); outV.push(last); }
+    if (ds === GLOBAL_END) {
+      // Naujausia diena: tik tikra reiksme, be carry-forward.
+      if (map[ds] != null) { outD.push(ds); outV.push(map[ds]); }
+    } else if (last != null) {
+      outD.push(ds); outV.push(last);
+    }
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return {dates: outD, data: outV};
