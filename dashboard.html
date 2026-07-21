@@ -309,15 +309,19 @@ function computeGlobalEnd(){
   return mx || null;
 }
 
-// Uzpildo praleistas dienas paskutine zinoma kaina (carry-forward) iki GLOBAL_END.
-// Leading (pries pirma reiksme) spragos NEuzpildomos.
+// Uzpildo praleistas dienas paskutine zinoma kaina (carry-forward), bet TIK IKI
+// paskutines TIKROS tos serijos datos. Uz jos (pvz. siandien, kol kainos dar
+// nesurinktos) NEuzpildo — lieka tuscia, lenteleje rodoma "—". Kita diena, kai
+// atsiranda tikra kaina, ta diena uzsipildo, o naujausia diena vel lieka "—".
+// Leading (pries pirma reiksme) spragos taip pat NEuzpildomos.
 function fillForward(dates, data){
-  if (!dates || !dates.length || !GLOBAL_END) return {dates: dates || [], data: data || []};
+  if (!dates || !dates.length) return {dates: dates || [], data: data || []};
   const map = {};
   for (let i = 0; i < dates.length; i++) map[dates[i]] = data[i];
+  const sorted = dates.slice().sort();
   const outD = [], outV = [];
-  let cur = new Date(dates[0] + 'T00:00:00Z');
-  const end = new Date(GLOBAL_END + 'T00:00:00Z');
+  let cur = new Date(sorted[0] + 'T00:00:00Z');
+  const end = new Date(sorted[sorted.length-1] + 'T00:00:00Z');
   let last = null;
   while (cur <= end) {
     const ds = cur.toISOString().slice(0, 10);
