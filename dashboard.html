@@ -319,15 +319,19 @@ function computeGlobalEnd(){
   return mx || null;
 }
 
-// Uzpildo praleistas dienas paskutine zinoma kaina (carry-forward) IKI VAKAR
-// dienos. Naujausia diena (GLOBAL_END = "siandien") rodoma TIK jei tai TIKRA tos
-// serijos reiksme — kitaip lieka tuscia (lenteleje "—"), nes Orlen/Neste tos
-// dienos kaina dar nesurinkta. Kita diena ji uzsipildo, o naujausia diena vel
-// lieka "—". Taip bruksnelis atsiranda TIK naujausiai dienai, o ne visai
-// spragai (pvz. jei CK AB tikri duomenys pasibaige anksciau, tarpines dienos
-// vis tiek uzpildomos, o bruksnelis lieka tik siandienai).
+// Saltiniai, kurie ima VAKAR dienos kaina (Orlen ir Neste) — jiems siandienos
+// eilute rodoma su bruksneliu, kol kaina neatkeliauja. Visi kiti (AS24, CK AB)
+// rodo naujausia zinoma kaina ir siandien.
+function lagsToday(key){ return key === 'ck_dz' || key === 'neste_dz' || key === 'neste_ab'; }
+
+// Uzpildo praleistas dienas paskutine zinoma kaina (carry-forward).
+// lagToday=true (Orlen/Neste): naujausia diena (GLOBAL_END = "siandien") rodoma
+//   TIK jei yra TIKRA reiksme, kitaip lieka tuscia (lenteleje "—"), nes tos
+//   dienos kaina dar nesurinkta. Kita diena ji uzsipildo.
+// lagToday=false (AS24, CK AB): siandien uzpildoma paskutine zinoma kaina
+//   (carry-forward), kaip ir kitos dienos.
 // Leading (pries pirma reiksme) spragos NEuzpildomos.
-function fillForward(dates, data){
+function fillForward(dates, data, lagToday){
   if (!dates || !dates.length || !GLOBAL_END) return {dates: dates || [], data: data || []};
   const map = {};
   for (let i = 0; i < dates.length; i++) map[dates[i]] = data[i];
@@ -339,8 +343,8 @@ function fillForward(dates, data){
   while (cur <= end) {
     const ds = cur.toISOString().slice(0, 10);
     if (map[ds] != null) last = map[ds];
-    if (ds === GLOBAL_END) {
-      // Naujausia diena: tik tikra reiksme, be carry-forward.
+    if (ds === GLOBAL_END && lagToday) {
+      // Vakar-dienos saltinis (Orlen/Neste): siandien tik tikra reiksme.
       if (map[ds] != null) { outD.push(ds); outV.push(map[ds]); }
     } else if (last != null) {
       outD.push(ds); outV.push(last);
@@ -365,28 +369,28 @@ function rebuildCharts(){
 }
 
 function getDieselSeries(){
-  const ck = fillForward(DATA.ck_dz.dates, DATA.ck_dz.data);
-  const ne = fillForward(DATA.neste_dz.dates, DATA.neste_dz.data);
+  const ck = fillForward(DATA.ck_dz.dates, DATA.ck_dz.data, true);
+  const ne = fillForward(DATA.neste_dz.dates, DATA.neste_dz.data, true);
   const s = [
     {id:'ck-dz', title:'CK (Orlen LT)', sub:'Dyzelinas E kl. su RRME · EUR/l be PVM', color:'var(--cyan)', dates:ck.dates, data:ck.data, key:'ck_dz'},
     {id:'neste-dz', title:'Neste', sub:'Diesel Futura · EUR/l be PVM', color:'var(--orange)', dates:ne.dates, data:ne.data, key:'neste_dz'},
   ];
   if (DATA.as24_dz) DATA.as24_dz.forEach((st,i) => {
-    const f = fillForward(st.dates, st.data);
+    const f = fillForward(st.dates, st.data, false);
     s.push({id:'as24-dz-'+i, title:'AS24 – '+st.name, sub:flag(st.country)+' '+st.country+' · Dyzelinas · EUR/l be PVM', color:'var(--purple)', dates:f.dates, data:f.data, key:'as24_dz', idx:i});
   });
   return s;
 }
 
 function getAdblueSeries(){
-  const ck = fillForward(DATA.ck_ab.dates, DATA.ck_ab.data);
-  const ne = fillForward(DATA.neste_ab.dates, DATA.neste_ab.data);
+  const ck = fillForward(DATA.ck_ab.dates, DATA.ck_ab.data, false);
+  const ne = fillForward(DATA.neste_ab.dates, DATA.neste_ab.data, true);
   const s = [
     {id:'ck-ab', title:'CK (Circle K)', sub:'AdBlue · EUR/l be PVM', color:'var(--teal)', dates:ck.dates, data:ck.data, key:'ck_ab'},
     {id:'neste-ab', title:'Neste', sub:'AdBlue · EUR/l be PVM', color:'var(--amber)', dates:ne.dates, data:ne.data, key:'neste_ab'},
   ];
   if (DATA.as24_ab) DATA.as24_ab.forEach((co,i) => {
-    const f = fillForward(co.dates, co.data);
+    const f = fillForward(co.dates, co.data, false);
     s.push({id:'as24-ab-'+i, title:'AS24 – '+co.name, sub:flag(co.code)+' '+co.code+' · AdBlue · EUR/l be PVM', color:'var(--blue)', dates:f.dates, data:f.data, key:'as24_ab', idx:i});
   });
   return s;
@@ -624,7 +628,7 @@ function renderTable(){
   const lookup = sources.map(s => {
     const series = getSeries(s);
     if (EM) return {map: null, series};
-    const f = fillForward(series.dates, series.data);
+    const f = fillForward(series.dates, series.data, lagsToday(s.key));
     const m = {};
     for (let i = 0; i < f.dates.length; i++) m[f.dates[i]] = f.data[i];
     return {map: m, series};
