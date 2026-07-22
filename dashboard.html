@@ -300,12 +300,22 @@ function aggregateSeries(dates, data, period){
 
 let GLOBAL_END = null;
 
+function todayStr(){
+  const n = new Date();
+  return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
+}
+
 function computeGlobalEnd(){
   let mx = '';
   const chk = (arr) => { if (arr && arr.length) { const d = arr[arr.length-1]; if (d > mx) mx = d; } };
   chk(DATA.ck_dz.dates); chk(DATA.neste_dz.dates); chk(DATA.ck_ab.dates); chk(DATA.neste_ab.dates);
   if (DATA.as24_dz) DATA.as24_dz.forEach(s => chk(s.dates));
   if (DATA.as24_ab) DATA.as24_ab.forEach(s => chk(s.dates));
+  // GLOBAL_END = velesne is (paskutine duomenu diena, SIANDIEN). Taip siandienos
+  // eilute visada rodoma (su bruksneliais), net kol nei vienas saltinis dar
+  // nesurinko siandienos kainos.
+  const t = todayStr();
+  if (t > mx) mx = t;
   return mx || null;
 }
 
@@ -629,6 +639,7 @@ function renderTable(){
     if(DATA.as24_ab) DATA.as24_ab.forEach(s=>addD(s.dates));
   } else {
     lookup.forEach(lk => { for (const d in lk.map) allDates.add(d); });
+    if (GLOBAL_END) allDates.add(GLOBAL_END);  // siandienos eilute visada matoma (su "—")
   }
   const dates = [...allDates].sort().reverse();
   const showDates = dates;  // visa istorija (naujausios virsuje)
